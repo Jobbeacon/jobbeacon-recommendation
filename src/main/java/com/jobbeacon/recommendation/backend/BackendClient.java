@@ -1,0 +1,43 @@
+package com.jobbeacon.recommendation.backend;
+
+import com.jobbeacon.recommendation.backend.dto.BackendCandidates;
+import com.jobbeacon.recommendation.backend.dto.BackendIdPage;
+import com.jobbeacon.recommendation.backend.dto.BackendJob;
+import com.jobbeacon.recommendation.backend.dto.BackendUser;
+import com.jobbeacon.recommendation.backend.dto.IdsRequest;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
+import java.util.UUID;
+
+/** The backend's internal API, the source of truth for users, jobs, CV skills and saved jobs. */
+@FeignClient(name = "backend", url = "${app.backend.url}", configuration = BackendClientConfiguration.class)
+public interface BackendClient {
+
+    /** Fails with {@code FeignException.NotFound} when no user has signed in with that Firebase account yet. */
+    @GetMapping("/internal/v1/users/by-firebase-uid/{firebaseUid}")
+    BackendUser findUserByFirebaseUid(@PathVariable("firebaseUid") String firebaseUid);
+
+    /** Jobs that no longer exist are left out of the result. */
+    @PostMapping("/internal/v1/graph/jobs")
+    List<BackendJob> findJobs(@RequestBody IdsRequest request);
+
+    @PostMapping("/internal/v1/graph/candidates")
+    BackendCandidates findCandidates(@RequestBody IdsRequest request);
+
+    /** Job ids in ascending order, starting after {@code after}; for the backfill. */
+    @GetMapping("/internal/v1/graph/job-ids")
+    BackendIdPage findJobIds(@RequestParam(value = "after", required = false) UUID after, @RequestParam("limit") int limit);
+
+    /** Ids of users with a CV or saved jobs, in ascending order, starting after {@code after}; for the backfill. */
+    @GetMapping("/internal/v1/graph/candidate-ids")
+    BackendIdPage findCandidateIds(
+        @RequestParam(value = "after", required = false) UUID after,
+        @RequestParam("limit") int limit
+    );
+}

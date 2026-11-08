@@ -1,0 +1,79 @@
+spring:
+  application:
+    name: jobbeacon-recommendation
+  profiles:
+    active: ${PROFILE_ACTIVE:local}
+  liquibase:
+    enabled: ${LIQUIBASE_ENABLED:true}
+    change-log: classpath:/db/changelog/db.changelog-master.xml
+
+  # This service's own database: interactions and the queue of entities waiting to be synced to the graph.
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/jobbeacon_recommendation}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+  messages:
+    basename: i18n/messages
+    encoding: UTF-8
+    fallback-to-system-locale: false
+
+  neo4j:
+    uri: ${NEO4J_URI:bolt://localhost:7687}
+    authentication:
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:change_this_password}
+
+  cloud:
+    openfeign:
+      client:
+        config:
+          backend:
+            connect-timeout: 5000
+            read-timeout: 30000
+
+app:
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
+  backend:
+    url: ${BACKEND_URL:http://localhost:8080}
+    # Must equal the backend's INTERNAL_API_TOKEN.
+    internal-token: ${INTERNAL_API_TOKEN:local-internal-token}
+  cdc:
+    enabled: ${GRAPH_CDC_ENABLED:true}
+    # The backend database, whose graph_sync_outbox is streamed through a logical replication slot.
+    source-url: ${BACKEND_DB_URL:jdbc:postgresql://localhost:5432/job_platform}
+    source-username: ${BACKEND_DB_USERNAME:postgres}
+    source-password: ${BACKEND_DB_PASSWORD:postgres}
+    slot-name: ${GRAPH_CDC_SLOT_NAME:jobbeacon_graph}
+    publication-name: ${GRAPH_CDC_PUBLICATION_NAME:jobbeacon_graph}
+  graph:
+    database: ${NEO4J_DATABASE:neo4j}
+    batch-size: ${GRAPH_BATCH_SIZE:500}
+    max-attempts: ${GRAPH_MAX_ATTEMPTS:10}
+    refresh-interval: ${GRAPH_REFRESH_INTERVAL:PT15M}
+    interaction-window: ${GRAPH_INTERACTION_WINDOW:P180D}
+    backfill-on-startup: ${GRAPH_BACKFILL_ON_STARTUP:true}
+
+server:
+  port: ${PORT:8083}
+
+logging:
+  level:
+    com.jobbeacon: INFO
+
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:firebase-service-account.json}
