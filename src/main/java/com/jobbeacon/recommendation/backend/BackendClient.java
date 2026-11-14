@@ -15,8 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.util.List;
 import java.util.UUID;
 
-/** The backend's internal API, the source of truth for users, jobs, CV skills and saved jobs. */
-@FeignClient(name = "backend", url = "${app.backend.url}", configuration = BackendClientConfiguration.class)
+@FeignClient(name = "${app.backend.service-id}", contextId = "backend")
 public interface BackendClient {
 
     /** Fails with {@code FeignException.NotFound} when no user has signed in with that Firebase account yet. */

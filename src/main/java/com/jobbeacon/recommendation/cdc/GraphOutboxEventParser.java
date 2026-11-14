@@ -8,10 +8,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Turns a Debezium change event for the backend's {@code graph_sync_outbox} into the entity it names. Only inserts
- * matter: the outbox is append-only, and a snapshot read ("r") replays rows written before the slot existed.
- */
 public final class GraphOutboxEventParser {
 
     private static final Set<String> APPLIED_OPS = Set.of("c", "r");

@@ -150,6 +150,18 @@ class GraphSyncServiceCandidateIT {
     assertThat(count("MATCH (j:Job) RETURN count(j)")).isZero();
   }
 
+  @Test
+  void largeJobSyncsAreSplitIntoRequestsTheBackendAccepts() {
+    List<UUID> ids = java.util.stream.IntStream.range(0, GraphSyncService.MAX_IDS_PER_REQUEST + 1)
+        .mapToObj(i -> UUID.randomUUID()).toList();
+    when(backendClient.findJobs(any())).thenReturn(List.of());
+
+    service.syncJobs(ids);
+
+    org.mockito.Mockito.verify(backendClient, org.mockito.Mockito.times(2)).findJobs(org.mockito.ArgumentMatchers.argThat(
+        request -> request.ids().size() <= GraphSyncService.MAX_IDS_PER_REQUEST));
+  }
+
   private void givenCandidateData(
       List<UUID> existingUserIds,
       List<BackendCandidates.Skill> skills,

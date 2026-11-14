@@ -19,7 +19,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /** Wires the whole application (Feign, security, Liquibase, scheduler) with CDC off and Firebase mocked. */
-@SpringBootTest(properties = "app.cdc.enabled=false")
+@SpringBootTest(properties = {"app.cdc.enabled=false", "eureka.client.enabled=false"})
 @Testcontainers
 class RecommendationApplicationIT {
 

@@ -21,7 +21,7 @@ FE ──POST /api/v1/me/job-interactions──> graph_sync_queue + user_job_int
 
 ## Chạy local
 
-Cần Postgres với `wal_level=logical`, Neo4j có plugin GDS và BE đang chạy. Tạo database riêng một lần:
+Cần Postgres với `wal_level=logical`, Neo4j có plugin GDS, discovery server (`../Jobbeacon-discovery`, cổng `8761`) và BE đang chạy (BE phải đăng ký vào discovery). Tạo database riêng một lần:
 
 ```sql
 CREATE DATABASE jobbeacon_recommendation;
@@ -33,14 +33,17 @@ CREATE DATABASE jobbeacon_recommendation;
 mvn spring-boot:run
 ```
 
-Mặc định: cổng `8083`, DB `jobbeacon_recommendation`, BE `http://localhost:8080`, token internal `local-internal-token` (phải trùng `INTERNAL_API_TOKEN` của BE).
+Mặc định: cổng `8083`, DB `jobbeacon_recommendation`, Eureka `http://localhost:8761/eureka/`.
+
+Service không giữ URL của BE: `BackendClient` là `@FeignClient(name = "${app.backend.service-id}")`, Feign hỏi Eureka để lấy instance `jobbeacon-be` đang chạy và load balancer chọn một instance. Timeout cấu hình dưới `spring.cloud.openfeign.client.config.backend` (theo `contextId = "backend"`).
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `DB_URL` | `jdbc:postgresql://localhost:5432/jobbeacon_recommendation` | DB của service này |
 | `BACKEND_DB_URL` | `jdbc:postgresql://localhost:5432/job_platform` | DB của BE, nơi Debezium đọc outbox |
-| `BACKEND_URL` | `http://localhost:8080` | BE cho Feign |
-| `INTERNAL_API_TOKEN` | `local-internal-token` | Header `X-Internal-Token` khi gọi `/internal/**` |
+| `BACKEND_SERVICE_ID` | `jobbeacon-be` | Tên BE trong Eureka, Feign gọi theo tên này |
+| `EUREKA_URL` | `http://localhost:8761/eureka/` | Địa chỉ discovery server |
+| `EUREKA_ENABLED` | `true` | Tắt đăng ký/tra cứu Eureka (khi tắt thì không gọi được BE) |
 | `GRAPH_CDC_ENABLED` | `true` | Tắt nếu không muốn stream outbox |
 | `GRAPH_REFRESH_INTERVAL` | `PT15M` | Chu kỳ sync và dựng lại projection |
 | `GRAPH_INTERACTION_WINDOW` | `P180D` | Tương tác cũ hơn không còn ảnh hưởng |

@@ -139,6 +139,14 @@ class GraphRefreshWorkerTest {
   }
 
   @Test
+  void deletesProcessedRowsOlderThanTheRetention() {
+    worker.refresh();
+
+    verify(queueRepository).deleteProcessedBefore(argThat(before ->
+        before.isBefore(java.time.Instant.now().minus(GraphRefreshWorker.PROCESSED_RETENTION).plusSeconds(5))));
+  }
+
+  @Test
   void failedRebuildDoesNotEscapeTheScheduledRun() {
     doThrow(new IllegalStateException("out of memory")).when(graphProjectionService).rebuild();
 

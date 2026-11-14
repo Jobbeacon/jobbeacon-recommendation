@@ -117,6 +117,23 @@ class RecommendationRepositoriesIT {
     assertThat(queueRepository.findPending(GraphEntityType.JOB, 2, PageRequest.of(0, 10))).isEmpty();
   }
 
+  @Test
+  void onlyRowsProcessedBeforeTheCutoffAreDeleted() {
+    queueService.enqueue(GraphEntityType.JOB, List.of(UUID.randomUUID(), UUID.randomUUID()));
+    queueService.enqueue(GraphEntityType.JOB, List.of(jobId));
+    List<GraphSyncQueueItem> rows = queueRepository.findPending(GraphEntityType.JOB, 10, PageRequest.of(0, 10));
+    UUID old = rows.get(0).getId();
+    UUID recent = rows.get(1).getId();
+    queueRepository.markProcessed(List.of(old), Instant.now().minus(10, ChronoUnit.DAYS));
+    queueRepository.markProcessed(List.of(recent), Instant.now());
+
+    assertThat(queueRepository.deleteProcessedBefore(Instant.now().minus(7, ChronoUnit.DAYS))).isOne();
+
+    assertThat(queueRepository.findById(old)).isEmpty();
+    assertThat(queueRepository.findById(recent)).isPresent();
+    assertThat(queueRepository.findPending(GraphEntityType.JOB, 10, PageRequest.of(0, 10))).hasSize(1);
+  }
+
   private int record(JobInteractionType type) {
     return interactionRepository.record(userId, jobId, type.name());
   }

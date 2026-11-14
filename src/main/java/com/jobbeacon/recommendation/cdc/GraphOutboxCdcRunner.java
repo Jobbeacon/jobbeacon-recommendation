@@ -26,14 +26,6 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-/**
- * Streams the backend's {@code graph_sync_outbox} through a logical replication slot of its own (separate from the
- * search sync's) and copies each change into this service's {@code graph_sync_queue}. The slot only advances after a
- * batch is queued, so a crash re-delivers events instead of losing them; queueing an entity twice is harmless.
- *
- * <p>Offsets live in this service's database; the heartbeat writes to the backend database so the slot keeps
- * advancing (and Postgres can recycle WAL) while the outbox is quiet.
- */
 @Slf4j
 @Component
 @ConditionalOnProperty(name = "app.cdc.enabled", havingValue = "true", matchIfMissing = true)

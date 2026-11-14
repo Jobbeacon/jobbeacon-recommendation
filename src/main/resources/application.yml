@@ -49,9 +49,8 @@ app:
   cors:
     allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
   backend:
-    url: ${BACKEND_URL:http://localhost:8080}
-    # Must equal the backend's INTERNAL_API_TOKEN.
-    internal-token: ${INTERNAL_API_TOKEN:local-internal-token}
+    # The backend's spring.application.name as registered in Eureka. Feign resolves it to a running instance.
+    service-id: ${BACKEND_SERVICE_ID:jobbeacon-be}
   cdc:
     enabled: ${GRAPH_CDC_ENABLED:true}
     # The backend database, whose graph_sync_outbox is streamed through a logical replication slot.
@@ -77,3 +76,11 @@ logging:
 
 firebase:
   credentials-path: ${FIREBASE_CREDENTIALS_PATH:firebase-service-account.json}
+
+eureka:
+  client:
+    enabled: ${EUREKA_ENABLED:true}
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true

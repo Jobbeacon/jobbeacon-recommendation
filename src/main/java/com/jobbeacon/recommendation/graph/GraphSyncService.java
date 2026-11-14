@@ -178,6 +178,9 @@ public class GraphSyncService {
         Stream.of(DELETE_CANDIDATES)
     ).flatMap(queries -> queries).toList();
 
+    /** The backend's internal API rejects requests with more ids than this. */
+    static final int MAX_IDS_PER_REQUEST = 1000;
+
     private static final String HAS_DATA = "RETURN EXISTS { MATCH (n) } AS hasData";
 
     private final Driver driver;
@@ -209,6 +212,14 @@ public class GraphSyncService {
 
     public void syncJobs(Collection<UUID> jobIds) {
         if (jobIds.isEmpty()) {
+            return;
+        }
+        // Missing jobs gathered from a whole candidate batch can exceed what the backend accepts in one request.
+        if (jobIds.size() > MAX_IDS_PER_REQUEST) {
+            List<UUID> ids = List.copyOf(jobIds);
+            for (int from = 0; from < ids.size(); from += MAX_IDS_PER_REQUEST) {
+                syncJobs(ids.subList(from, Math.min(from + MAX_IDS_PER_REQUEST, ids.size())));
+            }
             return;
         }
         List<BackendJob> jobs = backendClient.findJobs(new IdsRequest(jobIds));

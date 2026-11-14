@@ -12,6 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -36,6 +37,8 @@ import java.util.function.Consumer;
 public class GraphRefreshWorker {
 
     private static final int MAX_ERROR_LENGTH = 2000;
+    // Long enough to look back at what was synced recently, short enough that the table stays small.
+    static final Duration PROCESSED_RETENTION = Duration.ofDays(7);
     private static final Set<Integer> UNAVAILABLE_STATUSES = Set.of(502, 503, 504);
 
     private final GraphSyncQueueRepository queueRepository;
@@ -78,6 +81,18 @@ public class GraphRefreshWorker {
             graphProjectionService.rebuild();
         } catch (Exception e) {
             log.warn("Graph projection rebuild failed, keeping the previous one: {}", e.getMessage(), e);
+        }
+        purgeProcessed();
+    }
+
+    private void purgeProcessed() {
+        try {
+            int deleted = queueRepository.deleteProcessedBefore(Instant.now().minus(PROCESSED_RETENTION));
+            if (deleted > 0) {
+                log.info("Deleted {} processed graph sync queue rows", deleted);
+            }
+        } catch (Exception e) {
+            log.warn("Could not delete processed graph sync queue rows: {}", e.getMessage());
         }
     }
 
