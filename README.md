@@ -19,6 +19,10 @@ FE ──POST /api/v1/me/job-interactions──> graph_sync_queue + user_job_int
 - Worker lấy hàng đợi, gọi Feign sang BE để lấy trạng thái hiện tại (job, skill CV, job đã lưu), ghi vào Neo4j rồi dựng lại projection.
 - Backfill chạy khi graph trống: lấy toàn bộ id job và candidate qua Feign rồi đưa vào hàng đợi.
 
+## Xác thực
+
+Service không tự xác minh Firebase token. Gateway (`../Jobbeacon-gateway`) làm việc đó, rồi chuyển request `/api/rcm/**` tới đây với đường dẫn đổi thành `/api/**` (ví dụ `/api/rcm/v1/me/job-interactions` → `/api/v1/me/job-interactions`) và gắn header `X-User-Id`. Không dùng Spring Security: controller đọc `@RequestHeader("X-User-Id") String uid`, đổi sang id user của BE bằng `BackendUserResolver.requireUserId(uid)` rồi truyền id đó xuống service. Thiếu header hoặc BE chưa có user đó (BE tạo user ở `GET /api/v1/users/me`, FE gọi ngay sau khi đăng nhập) thì trả 401. Vì service tin header này, nó **không được** lộ ra ngoài mạng nội bộ. CORS cũng chỉ xử lý ở gateway.
+
 ## Chạy local
 
 Cần Postgres với `wal_level=logical`, Neo4j có plugin GDS, discovery server (`../Jobbeacon-discovery`, cổng `8761`) và BE đang chạy (BE phải đăng ký vào discovery). Tạo database riêng một lần:
@@ -27,7 +31,7 @@ Cần Postgres với `wal_level=logical`, Neo4j có plugin GDS, discovery server
 CREATE DATABASE jobbeacon_recommendation;
 ```
 
-Đặt `firebase-service-account.json` (giống BE) ở thư mục gốc, rồi:
+Rồi chạy:
 
 ```bash
 mvn spring-boot:run

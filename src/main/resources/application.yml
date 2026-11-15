@@ -46,8 +46,6 @@ spring:
             read-timeout: 30000
 
 app:
-  cors:
-    allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
   backend:
     # The backend's spring.application.name as registered in Eureka. Feign resolves it to a running instance.
     service-id: ${BACKEND_SERVICE_ID:jobbeacon-be}
@@ -69,13 +67,12 @@ app:
 
 server:
   port: ${PORT:8083}
+  # Honour X-Forwarded-* from the gateway.
+  forward-headers-strategy: framework
 
 logging:
   level:
     com.jobbeacon: INFO
-
-firebase:
-  credentials-path: ${FIREBASE_CREDENTIALS_PATH:firebase-service-account.json}
 
 eureka:
   client:
