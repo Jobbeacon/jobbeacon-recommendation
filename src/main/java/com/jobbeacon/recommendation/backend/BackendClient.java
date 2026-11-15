@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.util.List;
 import java.util.UUID;
 
-@FeignClient(name = "${app.backend.service-id}", contextId = "backend")
+@FeignClient(name = "${app.backend.service-id}", contextId = "backend", path = "${app.backend.context-path}")
 public interface BackendClient {
 
     /** Fails with {@code FeignException.NotFound} when no user has signed in with that Firebase account yet. */

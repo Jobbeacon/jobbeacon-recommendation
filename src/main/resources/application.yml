@@ -49,6 +49,7 @@ app:
   backend:
     # The backend's spring.application.name as registered in Eureka. Feign resolves it to a running instance.
     service-id: ${BACKEND_SERVICE_ID:jobbeacon-be}
+    context-path: ${BACKEND_CONTEXT_PATH:/jobbeacon-be}
   cdc:
     enabled: ${GRAPH_CDC_ENABLED:true}
     # The backend database, whose graph_sync_outbox is streamed through a logical replication slot.
@@ -67,7 +68,8 @@ app:
 
 server:
   port: ${PORT:8083}
-  # Honour X-Forwarded-* from the gateway.
+  servlet:
+    context-path: /jobbeacon-recommendation
   forward-headers-strategy: framework
 
 logging:
