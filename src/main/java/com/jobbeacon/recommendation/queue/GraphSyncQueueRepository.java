@@ -27,18 +27,18 @@ public interface GraphSyncQueueRepository extends JpaRepository<GraphSyncQueueIt
     );
 
     @Transactional
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("update GraphSyncQueueItem q set q.processedAt = :processedAt where q.id in :ids")
     int markProcessed(@Param("ids") Collection<UUID> ids, @Param("processedAt") Instant processedAt);
 
     @Transactional
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("update GraphSyncQueueItem q set q.attempts = q.attempts + 1, q.lastError = :error where q.id in :ids")
     int recordFailure(@Param("ids") Collection<UUID> ids, @Param("error") String error);
 
     /** Rows that gave up (attempts used up) are kept, so their last_error can still be inspected. */
     @Transactional
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("delete from GraphSyncQueueItem q where q.processedAt < :before")
     int deleteProcessedBefore(@Param("before") Instant before);
 }
