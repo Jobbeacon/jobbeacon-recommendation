@@ -79,6 +79,11 @@ logging:
 eureka:
   client:
     enabled: ${EUREKA_ENABLED:true}
+    # debezium-embedded puts jersey-client on the classpath (through Kafka connect-runtime), and the Eureka client then
+    # looks for a Jersey transport that isn't there: startup fails with "No qualifying bean of type
+    # TransportClientFactories". This keeps it on its RestTemplate transport.
+    jersey:
+      enabled: false
     service-url:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
   instance:
