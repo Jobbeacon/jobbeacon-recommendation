@@ -65,6 +65,17 @@ app:
     refresh-interval: ${GRAPH_REFRESH_INTERVAL:PT15M}
     interaction-window: ${GRAPH_INTERACTION_WINDOW:P180D}
     backfill-on-startup: ${GRAPH_BACKFILL_ON_STARTUP:true}
+  recommendation:
+    pool-size: ${RECOMMENDATION_POOL_SIZE:100}
+    max-size: 50
+    # 0 = always the plain ranking; 1 = picked in proportion to the score; higher = closer to a uniform shuffle.
+    sampling-temperature: ${RECOMMENDATION_SAMPLING_TEMPERATURE:0.5}
+    # A new projection starts new cache entries anyway, so this only needs to match the refresh interval.
+    cache-ttl: ${GRAPH_REFRESH_INTERVAL:PT15M}
+    fallback-ttl: PT5M
+    applied-hidden-for: ${RECOMMENDATION_APPLIED_HIDDEN_FOR:P14D}
+    max-iterations: 20
+    damping-factor: 0.85
 
 server:
   port: ${PORT:8083}

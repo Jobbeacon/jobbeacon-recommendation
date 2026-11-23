@@ -37,6 +37,9 @@ public interface UserJobInteractionRepository
       @Param("since") Instant since
   );
 
+  @Query("select i from UserJobInteraction i where i.id.userId = :userId order by i.lastAt")
+  List<UserJobInteraction> findByUserIdOldestFirst(@Param("userId") UUID userId);
+
   @Query("select distinct i.id.userId from UserJobInteraction i")
   List<UUID> findAllUserIds();
 }

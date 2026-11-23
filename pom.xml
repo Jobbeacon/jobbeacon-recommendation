@@ -21,6 +21,8 @@
     <java.version>21</java.version>
     <spring-cloud.version>2023.0.5</spring-cloud.version>
     <debezium.version>3.2.7.Final</debezium.version>
+    <!-- The version Debezium is built with; the one Spring Boot manages (42.7.4) breaks CDC with a NoSuchMethodError. -->
+    <postgresql.version>42.7.7</postgresql.version>
     <!-- Docker Engine 29+ requires API >= 1.44; Testcontainers < 1.21.4 (Boot 3.3 default 1.19.8) fails -->
     <testcontainers.version>1.21.4</testcontainers.version>
   </properties>

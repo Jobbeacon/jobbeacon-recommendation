@@ -3,6 +3,8 @@ package com.jobbeacon.recommendation.web;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.neo4j.driver.exceptions.ServiceUnavailableException;
+import org.neo4j.driver.exceptions.SessionExpiredException;
 import org.springframework.context.MessageSource;
 import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.http.HttpStatus;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.Locale;
 import java.util.Objects;
@@ -24,6 +27,7 @@ public class ExceptionHandlerAdvice {
     static final String BAD_REQUEST = "bad_request";
     static final String UNAUTHORIZED = "unauthorized";
     static final String BACKEND_UNAVAILABLE = "backend_unavailable";
+    static final String RECOMMENDATION_UNAVAILABLE = "recommendation_unavailable";
     static final String INTERNAL_SERVER_ERROR = "internal_server_error";
 
     private final MessageSource messageSource;
@@ -51,8 +55,8 @@ public class ExceptionHandlerAdvice {
         return error(HttpStatus.BAD_REQUEST, BAD_REQUEST, locale);
     }
 
-    @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<ResponseGeneral<ErrorBody>> handleUnreadable(HttpMessageNotReadableException ex, Locale locale) {
+    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<ResponseGeneral<ErrorBody>> handleUnreadable(Exception ex, Locale locale) {
         return error(HttpStatus.BAD_REQUEST, BAD_REQUEST, locale);
     }
 
@@ -60,6 +64,12 @@ public class ExceptionHandlerAdvice {
     public ResponseEntity<ResponseGeneral<ErrorBody>> handleBackend(FeignException ex, Locale locale) {
         log.error("Backend call failed with status {}: {}", ex.status(), ex.getMessage());
         return error(HttpStatus.SERVICE_UNAVAILABLE, BACKEND_UNAVAILABLE, locale);
+    }
+
+    @ExceptionHandler({ServiceUnavailableException.class, SessionExpiredException.class})
+    public ResponseEntity<ResponseGeneral<ErrorBody>> handleGraphUnavailable(Exception ex, Locale locale) {
+        log.error("Neo4j unavailable: {}", ex.getMessage());
+        return error(HttpStatus.SERVICE_UNAVAILABLE, RECOMMENDATION_UNAVAILABLE, locale);
     }
 
     @ExceptionHandler(Exception.class)

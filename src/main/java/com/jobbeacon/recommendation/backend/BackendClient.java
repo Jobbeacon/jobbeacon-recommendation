@@ -3,6 +3,8 @@ package com.jobbeacon.recommendation.backend;
 import com.jobbeacon.recommendation.backend.dto.BackendCandidates;
 import com.jobbeacon.recommendation.backend.dto.BackendIdPage;
 import com.jobbeacon.recommendation.backend.dto.BackendJob;
+import com.jobbeacon.recommendation.backend.dto.BackendJobSummary;
+import com.jobbeacon.recommendation.backend.dto.BackendRecommendationContext;
 import com.jobbeacon.recommendation.backend.dto.BackendUser;
 import com.jobbeacon.recommendation.backend.dto.IdsRequest;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -28,6 +30,13 @@ public interface BackendClient {
 
     @PostMapping("/internal/v1/graph/candidates")
     BackendCandidates findCandidates(@RequestBody IdsRequest request);
+
+    /** Cards of the given jobs for display. Missing and expired jobs are left out, and the order is unspecified. */
+    @PostMapping("/internal/v1/jobs/summaries")
+    List<BackendJobSummary> findJobSummaries(@RequestBody IdsRequest request);
+
+    @PostMapping("/internal/v1/recommendation/context")
+    BackendRecommendationContext findRecommendationContext(@RequestBody BackendRecommendationContext.Request request);
 
     /** Job ids in ascending order, starting after {@code after}; for the backfill. */
     @GetMapping("/internal/v1/graph/job-ids")

@@ -38,6 +38,7 @@ public class GraphOutboxCdcRunner implements ApplicationRunner {
     private final Environment environment;
     private final GraphSyncQueueService queueService;
     private final GraphOutboxEventParser parser;
+    private final CdcHealth cdcHealth;
     private final AtomicBoolean running = new AtomicBoolean(true);
     private Thread engineThread;
 
@@ -45,12 +46,14 @@ public class GraphOutboxCdcRunner implements ApplicationRunner {
         CdcProperties properties,
         Environment environment,
         GraphSyncQueueService queueService,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        CdcHealth cdcHealth
     ) {
         this.properties = properties;
         this.environment = environment;
         this.queueService = queueService;
         this.parser = new GraphOutboxEventParser(objectMapper);
+        this.cdcHealth = cdcHealth;
     }
 
     @Override
@@ -96,6 +99,7 @@ public class GraphOutboxCdcRunner implements ApplicationRunner {
                     committer.markProcessed(record);
                 }
                 committer.markBatchFinished();
+                cdcHealth.eventReceived();
             })
             .build();
     }
