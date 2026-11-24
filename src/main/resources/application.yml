@@ -67,6 +67,7 @@ app:
     backfill-on-startup: ${GRAPH_BACKFILL_ON_STARTUP:true}
   recommendation:
     pool-size: ${RECOMMENDATION_POOL_SIZE:100}
+    title-pool-size: ${RECOMMENDATION_TITLE_POOL_SIZE:50}
     max-size: 50
     # 0 = always the plain ranking; 1 = picked in proportion to the score; higher = closer to a uniform shuffle.
     sampling-temperature: ${RECOMMENDATION_SAMPLING_TEMPERATURE:0.5}

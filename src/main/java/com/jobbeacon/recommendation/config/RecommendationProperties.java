@@ -9,6 +9,7 @@ import java.time.Duration;
  *
  * @param poolSize            how many jobs a user's list is drawn from: the best Personalized PageRank results,
  *                            topped up with the newest jobs when there are fewer
+ * @param titlePoolSize       how many jobs found by title (see {@code BackendClient#findTitleJobs}) join that pool
  * @param maxSize             most jobs a request may ask for
  * @param samplingTemperature how much each reload reshuffles the pool. A job's chance of being picked next grows
  *                            with {@code score ^ (1 / temperature)}: near 0 always gives the plain ranking, 1 picks in
@@ -25,6 +26,7 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "app.recommendation")
 public record RecommendationProperties(
         int poolSize,
+        int titlePoolSize,
         int maxSize,
         double samplingTemperature,
         Duration cacheTtl,

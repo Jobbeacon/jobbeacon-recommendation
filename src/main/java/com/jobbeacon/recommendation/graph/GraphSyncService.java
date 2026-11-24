@@ -128,7 +128,9 @@ public class GraphSyncService {
         UNWIND row.skills AS skill
         MATCH (s:Skill {id: skill.id})
         MERGE (c)-[r:HAS_SKILL]->(s)
-        SET r.confidence = skill.confidence, r.experience_months = skill.experience_months
+        SET r.confidence = skill.confidence,
+            r.experience_months = skill.experience_months,
+            r.last_used_at = skill.last_used_at
         """;
 
     private static final String PRUNE_JOB_RELATIONSHIP = """
@@ -307,7 +309,8 @@ public class GraphSyncService {
                 skillRows.add(row(
                     "id", skillId,
                     "confidence", skill.confidence() == null ? null : skill.confidence().doubleValue(),
-                    "experience_months", skill.experienceMonths()
+                    "experience_months", skill.experienceMonths(),
+                    "last_used_at", skill.lastUsedAt()
                 ));
             }
 

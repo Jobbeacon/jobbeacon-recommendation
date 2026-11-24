@@ -112,6 +112,59 @@ class GraphProjectionServiceIT {
   }
 
   @Test
+  void longerUsedSkillsWeighMoreUpToACap() {
+    run("""
+        CREATE (c:Candidate {id: 'candidate'}),
+               (c)-[:HAS_SKILL {confidence: 0.9}]->(:Skill {id: 'unknown'}),
+               (c)-[:HAS_SKILL {confidence: 0.9, experience_months: 0}]->(:Skill {id: 'none'}),
+               (c)-[:HAS_SKILL {confidence: 0.9, experience_months: 12}]->(:Skill {id: 'oneYear'}),
+               (c)-[:HAS_SKILL {confidence: 0.9, experience_months: 120}]->(:Skill {id: 'tenYears'})
+        """);
+
+    service.rebuild();
+
+    assertThat(weight("unknown")).isCloseTo(2.7, within(1e-9));
+    assertThat(weight("none")).isCloseTo(2.7, within(1e-9));
+    assertThat(weight("oneYear")).isCloseTo(2.7 * (1 + Math.log(2)), within(1e-9));
+    assertThat(weight("tenYears")).isCloseTo(2.7 * GraphProjectionService.MAX_EXPERIENCE_FACTOR, within(1e-9));
+  }
+
+  @Test
+  void skillsNotUsedForLongWeighLessDownToAFloor() {
+    run("""
+        CREATE (c:Candidate {id: 'candidate'}),
+               (c)-[:HAS_SKILL {last_used_at: date()}]->(:Skill {id: 'now'}),
+               (c)-[:HAS_SKILL {last_used_at: date() + duration('P60D')}]->(:Skill {id: 'future'}),
+               (c)-[:HAS_SKILL {last_used_at: date() - duration('P913D')}]->(:Skill {id: 'halfway'}),
+               (c)-[:HAS_SKILL {last_used_at: date() - duration('P7300D')}]->(:Skill {id: 'longAgo'})
+        """);
+
+    service.rebuild();
+
+    // The database's date and the service's UTC date can be a day apart.
+    assertThat(weight("now")).isCloseTo(3.0, within(0.01));
+    assertThat(weight("future")).isEqualTo(3.0);
+    assertThat(weight("halfway")).isCloseTo(3.0 * Math.sqrt(0.5), within(0.01));
+    assertThat(weight("longAgo")).isEqualTo(3.0 * GraphProjectionService.MIN_RECENCY_FACTOR);
+  }
+
+  @Test
+  void strongerSkillsLeadToJobsFirst() {
+    run("""
+        CREATE (c:Candidate {id: 'candidate'}),
+               (c)-[:HAS_SKILL {confidence: 0.9, experience_months: 48, last_used_at: date()}]->(java:Skill {id: 'java'}),
+               (c)-[:HAS_SKILL {confidence: 0.9, experience_months: 12, last_used_at: date() - duration('P5Y')}]
+                   ->(php:Skill {id: 'php'}),
+               (:Job {id: 'javaJob'})-[:REQUIRES_SKILL]->(java),
+               (:Job {id: 'phpJob'})-[:REQUIRES_SKILL]->(php)
+        """);
+
+    service.rebuild();
+
+    assertThat(recommendedJobs("candidate")).containsExactly("javaJob", "phpJob");
+  }
+
+  @Test
   void expiredJobsAreLeftOut() {
     run("""
         CREATE (c:Candidate {id: 'candidate'})-[:HAS_SKILL]->(s:Skill {id: 'java'}),
@@ -203,16 +256,16 @@ class GraphProjectionServiceIT {
     }
   }
 
-  /** Weight of the projected relationship between the candidate and the given job. */
-  private double weight(String jobId) {
+  /** Weight of the projected relationship between the candidate and the given job or skill. */
+  private double weight(String targetId) {
     try (Session session = driver.session()) {
       return session.run("""
           CALL gds.graph.relationshipProperty.stream($graphName, 'weight')
           YIELD sourceNodeId, targetNodeId, propertyValue
           WITH gds.util.asNode(sourceNodeId) AS source, gds.util.asNode(targetNodeId) AS target, propertyValue
-          WHERE source:Candidate AND target.id = $jobId
+          WHERE source:Candidate AND target.id = $targetId
           RETURN propertyValue
-          """, Map.of("graphName", service.activeGraphName().orElseThrow(), "jobId", jobId))
+          """, Map.of("graphName", service.activeGraphName().orElseThrow(), "targetId", targetId))
           .single().get(0).asDouble();
     }
   }

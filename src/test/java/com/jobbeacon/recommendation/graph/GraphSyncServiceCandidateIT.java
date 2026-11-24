@@ -15,6 +15,7 @@ import com.jobbeacon.recommendation.interaction.UserJobInteractionRepository;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -74,7 +75,8 @@ class GraphSyncServiceCandidateIT {
         new BackendJob(JOB, "Backend", null, null, NOW, null, List.of(), List.of())));
     givenCandidateData(
         List.of(USER),
-        List.of(new BackendCandidates.Skill(USER, SKILL, "Java", "java", new BigDecimal("0.900"), 24)),
+        List.of(new BackendCandidates.Skill(USER, SKILL, "Java", "java", new BigDecimal("0.900"), 24,
+            LocalDate.of(2025, 6, 1))),
         List.of(new BackendCandidates.SavedJob(USER, JOB, NOW)),
         List.of(interaction(JobInteractionType.VIEWED, 3)));
   }
@@ -83,7 +85,7 @@ class GraphSyncServiceCandidateIT {
   void createsCandidateWithAllRelationshipsAndTheJobItPointsTo() {
     service.syncCandidates(Set.of(USER));
 
-    assertThat(count("MATCH (:Candidate {id: $id})-[:HAS_SKILL {confidence: 0.9, experience_months: 24}]->(:Skill) RETURN count(*)")).isOne();
+    assertThat(count("MATCH (:Candidate {id: $id})-[:HAS_SKILL {confidence: 0.9, experience_months: 24, last_used_at: date('2025-06-01')}]->(:Skill) RETURN count(*)")).isOne();
     assertThat(count("MATCH (:Candidate {id: $id})-[:SAVED {count: 1}]->(:Job {title: 'Backend'}) RETURN count(*)")).isOne();
     assertThat(count("MATCH (:Candidate {id: $id})-[:VIEWED {count: 3}]->(:Job) RETURN count(*)")).isOne();
   }

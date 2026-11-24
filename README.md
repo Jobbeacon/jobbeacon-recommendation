@@ -18,15 +18,17 @@ FE ──POST /api/v1/me/job-interactions──> graph_sync_queue + user_job_int
 - Tương tác (`VIEWED`, `APPLY_CLICKED`) được ghi thẳng vào DB của service này, kèm một dòng `graph_sync_queue` trong cùng transaction.
 - Worker lấy hàng đợi, gọi Feign sang BE để lấy trạng thái hiện tại (job, skill CV, job đã lưu), ghi vào Neo4j rồi dựng lại projection.
 - Backfill chạy khi graph trống: lấy toàn bộ id job và candidate qua Feign rồi đưa vào hàng đợi.
+- Thêm thuộc tính mới vào cạnh (ví dụ `last_used_at` của `HAS_SKILL`) thì candidate cũ chỉ có giá trị đó sau lần đồng bộ kế tiếp của họ. Muốn cập nhật ngay cho tất cả: xoá dữ liệu Neo4j rồi khởi động lại để backfill.
 
 ## Gợi ý việc làm
 
 `GET /api/v1/me/recommended-jobs?size=20` (`size` tối đa 50) trả `content` (job card giống danh sách job của BE), `personalized` và `matched_skills` (id job -> kỹ năng trong CV mà job cần). Không phân trang: mỗi request là một danh sách xáo trộn mới.
 
-1. **Xếp hạng**: chạy Personalized PageRank từ node Candidate của user trên projection đang dùng, lấy top `RECOMMENDATION_POOL_SIZE` job. PageRank đi qua các job user đã lưu, bấm ứng tuyển hoặc xem để tìm job tương tự, nhưng không trả về chính các job đó. Kết quả được cache theo (user, tên projection). Projection mới có tên mới nên cache tự hết hiệu lực, vì vậy PageRank chạy tối đa một lần cho mỗi user giữa hai lần dựng lại.
-2. **Bù**: nếu chưa đủ pool (user chưa có CV hay tương tác, chưa có projection, hoặc user không có trong projection) thì bù bằng các job mới nhất.
-3. **Điều chỉnh** theo trạng thái hiện tại, không chờ projection: ẩn job đã lưu và job bấm ứng tuyển trong `RECOMMENDATION_APPLIED_HIDDEN_FOR`, đẩy job đã xem xuống cuối, nhân điểm theo sở thích tìm việc (vị trí, địa điểm, loại hình, lương; xem `PreferenceBoost`). Không khớp thì giảm điểm chứ không loại. Thông tin job không có thì không tính. BE so khớp và trả kết quả qua `POST /jobbeacon-be/internal/v1/recommendation/context`.
-4. **Xáo trộn**: phần gợi ý cá nhân đứng trước, phần bù đứng sau. Mỗi phần được xáo ngẫu nhiên theo trọng số điểm (Gumbel-max): job có điểm cao vẫn hay đứng đầu, nhưng mỗi lần tải lại sẽ khác. Các job card giống hệt nhau (tiêu đề, công ty, địa điểm) chỉ hiện một lần.
+1. **Xếp hạng**: chạy Personalized PageRank từ node Candidate của user trên projection đang dùng, lấy top `RECOMMENDATION_POOL_SIZE` job. PageRank đi qua các job user đã lưu, bấm ứng tuyển hoặc xem để tìm job tương tự, nhưng không trả về chính các job đó. Kết quả được cache theo (user, tên projection). Projection mới có tên mới nên cache tự hết hiệu lực, vì vậy PageRank chạy tối đa một lần cho mỗi user giữa hai lần dựng lại. Trọng số cạnh `HAS_SKILL` = 3 × độ tin cậy × số tháng dùng kỹ năng × độ mới (xem `GraphProjectionService`); CV không có thông tin nào thì hệ số đó bằng 1.
+2. **Thêm job theo chức danh**: BE tìm trong Elasticsearch tối đa `RECOMMENDATION_TITLE_POOL_SIZE` job còn hạn có chức danh user muốn (`POST /jobbeacon-be/internal/v1/recommendation/title-jobs`): vị trí mong muốn, hoặc chức danh trong CV nếu user chưa khai. Khớp theo từ ngay lập tức; khớp theo nghĩa ("Kỹ sư Backend" = "Backend Developer") do `TitleMatchWorker` của BE xác định trước ở nền. Job chưa có trong xếp hạng được thêm vào cuối. Bước này lỗi thì bỏ qua.
+3. **Bù**: nếu chưa đủ pool (user chưa có CV hay tương tác, chưa có projection, hoặc user không có trong projection) thì bù bằng các job mới nhất.
+4. **Điều chỉnh** theo trạng thái hiện tại, không chờ projection: ẩn job đã lưu và job bấm ứng tuyển trong `RECOMMENDATION_APPLIED_HIDDEN_FOR`, đẩy job đã xem xuống cuối, **cộng** điểm khi khớp chức danh (điểm PageRank đã chuẩn hoá về tối đa 1: vị trí mong muốn +0.9; chưa khai thì chức danh hiện tại trong CV +0.7, hai chức danh cũ gần nhất +0.3), rồi **nhân** theo địa điểm, loại hình, lương và kinh nghiệm còn thiếu so với yêu cầu (xem `PreferenceBoost`). Không khớp thì giảm điểm chứ không loại. Thông tin job không có thì không tính. BE so khớp và trả kết quả qua `POST /jobbeacon-be/internal/v1/recommendation/context`.
+5. **Xáo trộn**: phần gợi ý cá nhân đứng trước, phần bù đứng sau. Mỗi phần được xáo ngẫu nhiên theo trọng số điểm (Gumbel-max): job có điểm cao vẫn hay đứng đầu, nhưng mỗi lần tải lại sẽ khác. Các job card giống hệt nhau (tiêu đề, công ty, địa điểm) chỉ hiện một lần.
 
 `personalized = false` khi không có job nào đến từ graph hay khớp sở thích.
 
@@ -67,6 +69,7 @@ Service không giữ URL của BE: `BackendClient` là `@FeignClient(name = "${a
 | `GRAPH_INTERACTION_WINDOW` | `P180D` | Tương tác cũ hơn không còn ảnh hưởng |
 | `GRAPH_BACKFILL_ON_STARTUP` | `true` | Chỉ chạy khi graph chưa có node nào |
 | `RECOMMENDATION_POOL_SIZE` | `100` | Số job tối đa trong danh sách gợi ý của một user |
+| `RECOMMENDATION_TITLE_POOL_SIZE` | `50` | Số job tìm theo chức danh được thêm vào (tối đa 200) |
 | `RECOMMENDATION_APPLIED_HIDDEN_FOR` | `P14D` | Ẩn job bao lâu sau khi user bấm ứng tuyển |
 | `RECOMMENDATION_SAMPLING_TEMPERATURE` | `0.5` | Mức xáo trộn mỗi lần tải: `0` = luôn đúng thứ hạng, `1` = chọn theo tỉ lệ điểm, lớn hơn thì gần ngẫu nhiên đều |
 

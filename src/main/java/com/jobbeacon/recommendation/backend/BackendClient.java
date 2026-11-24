@@ -38,6 +38,10 @@ public interface BackendClient {
     @PostMapping("/internal/v1/recommendation/context")
     BackendRecommendationContext findRecommendationContext(@RequestBody BackendRecommendationContext.Request request);
 
+    /** Open jobs with a title the user looks for (or, if they stated none, one from their CV), best match first. */
+    @PostMapping("/internal/v1/recommendation/title-jobs")
+    List<UUID> findTitleJobs(@RequestBody BackendRecommendationContext.TitleJobsRequest request);
+
     /** Job ids in ascending order, starting after {@code after}; for the backfill. */
     @GetMapping("/internal/v1/graph/job-ids")
     BackendIdPage findJobIds(@RequestParam(value = "after", required = false) UUID after, @RequestParam("limit") int limit);

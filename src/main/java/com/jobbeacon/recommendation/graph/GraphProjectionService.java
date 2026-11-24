@@ -31,8 +31,9 @@ public class GraphProjectionService {
 
     static final String GRAPH_NAME_PREFIX = "jobbeacon-recommendation-";
 
-    // Initial values, to be tuned against recommendation quality. HAS_SKILL is further scaled by the CV confidence, and
-    // interactions by how often they were repeated (see MAX_REPEAT_FACTOR).
+    // Initial values, to be tuned against recommendation quality. HAS_SKILL is further scaled by the CV confidence, how
+    // long the skill was used (see MAX_EXPERIENCE_FACTOR) and how long ago (see MIN_RECENCY_FACTOR), and interactions by
+    // how often they were repeated (see MAX_REPEAT_FACTOR).
     private static final Map<String, Double> RELATIONSHIP_WEIGHTS = Map.of(
         "HAS_SKILL", 3.0,
         "REQUIRES_SKILL", 1.0,
@@ -48,14 +49,36 @@ public class GraphProjectionService {
      */
     static final double MAX_REPEAT_FACTOR = 3.0;
 
+    /**
+     * Experience counts as {@code 1 + ln(1 + years)}: each year adds less than the last, and the factor stops at this
+     * value (reached before 2 years) so that one long-held skill does not drown out the rest of the CV. A skill whose
+     * experience the CV does not tell keeps factor 1, like one with none.
+     */
+    static final double MAX_EXPERIENCE_FACTOR = 2.0;
+
+    /**
+     * A skill halves in weight for every {@link #RECENCY_HALF_LIFE_YEARS} since it was last used, down to this: old
+     * knowledge is worth less, but not nothing. A skill whose last use the CV does not tell keeps factor 1.
+     */
+    static final double MIN_RECENCY_FACTOR = 0.5;
+    static final double RECENCY_HALF_LIFE_YEARS = 5.0;
+
     private static final String PROJECT = """
         MATCH (source)-[r:HAS_SKILL|REQUIRES_SKILL|APPLY_CLICKED|SAVED|VIEWED]->(target)
         WHERE (source.expires_at IS NULL OR source.expires_at > $now)
           AND (target.expires_at IS NULL OR target.expires_at > $now)
           AND (NOT type(r) IN ['APPLY_CLICKED', 'VIEWED'] OR r.last_at >= $interactionsSince)
-        WITH source, r, target, 1.0 + log(coalesce(r.count, 1)) AS repeatFactor
         WITH source, r, target,
-             CASE WHEN repeatFactor > $maxRepeatFactor THEN $maxRepeatFactor ELSE repeatFactor END AS repeatFactor
+             1.0 + log(coalesce(r.count, 1)) AS repeatFactor,
+             1.0 + log(1.0 + coalesce(r.experience_months, 0) / 12.0) AS experienceFactor,
+             0.5 ^ (duration.inDays(r.last_used_at, date($now)).days / 365.25 / $recencyHalfLifeYears) AS recencyFactor
+        WITH source, r, target,
+             CASE WHEN repeatFactor > $maxRepeatFactor THEN $maxRepeatFactor ELSE repeatFactor END AS repeatFactor,
+             CASE WHEN experienceFactor > $maxExperienceFactor THEN $maxExperienceFactor
+                  ELSE experienceFactor END AS experienceFactor,
+             CASE WHEN recencyFactor IS NULL OR recencyFactor > 1.0 THEN 1.0
+                  WHEN recencyFactor < $minRecencyFactor THEN $minRecencyFactor
+                  ELSE recencyFactor END AS recencyFactor
         WITH gds.graph.project(
             $graphName,
             source,
@@ -64,7 +87,10 @@ public class GraphProjectionService {
                 sourceNodeLabels: labels(source),
                 targetNodeLabels: labels(target),
                 relationshipType: type(r),
-                relationshipProperties: {weight: $weights[type(r)] * coalesce(r.confidence, 1.0) * repeatFactor}
+                relationshipProperties: {
+                    weight: $weights[type(r)] * coalesce(r.confidence, 1.0)
+                        * experienceFactor * recencyFactor * repeatFactor
+                }
             },
             {undirectedRelationshipTypes: ['*']}
         ) AS graph
@@ -109,7 +135,10 @@ public class GraphProjectionService {
                 "now", now,
                 "interactionsSince", now.minus(interactionWindow),
                 "weights", RELATIONSHIP_WEIGHTS,
-                "maxRepeatFactor", MAX_REPEAT_FACTOR
+                "maxRepeatFactor", MAX_REPEAT_FACTOR,
+                "maxExperienceFactor", MAX_EXPERIENCE_FACTOR,
+                "minRecencyFactor", MIN_RECENCY_FACTOR,
+                "recencyHalfLifeYears", RECENCY_HALF_LIFE_YEARS
             )).single();
 
             boolean projected = !result.get("nodes").isNull();

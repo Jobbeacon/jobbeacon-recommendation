@@ -1,6 +1,7 @@
 package com.jobbeacon.recommendation.backend.dto;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -17,7 +18,8 @@ public record BackendCandidates(List<UUID> existingUserIds, List<Skill> skills, 
             String name,
             String normalizedName,
             BigDecimal confidence,
-            Integer experienceMonths
+            Integer experienceMonths,
+            LocalDate lastUsedAt
     ) {
     }
 
