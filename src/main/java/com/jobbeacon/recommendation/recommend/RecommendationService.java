@@ -3,12 +3,14 @@ package com.jobbeacon.recommendation.recommend;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.jobbeacon.recommendation.backend.BackendClient;
+import com.jobbeacon.recommendation.backend.dto.BackendContentJobs;
 import com.jobbeacon.recommendation.backend.dto.BackendJobSummary;
 import com.jobbeacon.recommendation.backend.dto.BackendRecommendationContext;
 import com.jobbeacon.recommendation.backend.dto.BackendRecommendationContext.PreferenceMatch;
 import com.jobbeacon.recommendation.backend.dto.IdsRequest;
 import com.jobbeacon.recommendation.config.RecommendationProperties;
 import com.jobbeacon.recommendation.graph.GraphProjectionService;
+import com.jobbeacon.recommendation.recommend.RankFusion.Source;
 import com.jobbeacon.recommendation.interaction.JobInteractionType;
 import com.jobbeacon.recommendation.interaction.UserJobInteraction;
 import com.jobbeacon.recommendation.interaction.UserJobInteractionRepository;
@@ -38,10 +40,11 @@ import java.util.stream.Stream;
 /**
  * Builds a user's recommended jobs:
  * <ol>
- *   <li>Rank: Personalized PageRank on the active projection, cached per user and projection, so it runs at most
- *   once per user between two rebuilds. A new projection has a new name and thus starts fresh cache entries.</li>
- *   <li>Widen: jobs whose title the user looks for join the ranking, so a job the graph does not lead to can still be
- *   recommended.</li>
+ *   <li>Rank: three sources, fused by their ranks (see {@link RankFusion}). Personalized PageRank on the active
+ *   projection (skills and behaviour, also of similar users), cached per user and projection, so it runs at most once
+ *   per user between two rebuilds; a new projection has a new name and thus starts fresh cache entries. Jobs with the
+ *   words of a title the user looks for. Jobs closest in meaning to their desired titles and CV. Either of the last two
+ *   finds jobs the graph does not lead to.</li>
  *   <li>Fill: when the graph knows too little about the user (no CV, no activity, or no projection yet) the pool is
  *   topped up with the newest jobs.</li>
  *   <li>Adjust: what changed since the projection was built is read live. Saved jobs and recent apply clicks are
@@ -61,6 +64,8 @@ public class RecommendationService {
     /** How many cards to ask the backend for; it accepts 1000. */
     private static final int MAX_CARDS = 500;
     private static final int MAX_MATCHED_SKILLS = 3;
+    /** Most jobs the backend finds per content source. */
+    private static final int MAX_CONTENT_JOBS = 200;
     private static final String NO_PROJECTION = "";
 
     private final RecommendationGraphRepository graphRepository;
@@ -98,7 +103,7 @@ public class RecommendationService {
             throw ApiException.badRequest(INVALID_SIZE);
         }
 
-        List<ScoredJob> ranking = withTitleJobs(ranking(userId), titleJobs(userId));
+        List<ScoredJob> ranking = fuse(ranking(userId), contentJobs(userId));
         // Fetched with room for the jobs that are filtered out below, which come out of the same list.
         List<UUID> newest = newestJobs.get(NO_PROJECTION, key -> graphRepository.newestJobs(properties.poolSize() * 2));
         List<UserJobInteraction> interactions = interactionRepository.findByUserIdOldestFirst(userId);
@@ -140,9 +145,7 @@ public class RecommendationService {
         List<UUID> shown = content.stream().map(BackendJobSummary::id).toList();
         Set<UUID> personalizedIds = personalized.stream().map(ScoredJob::jobId).collect(Collectors.toSet());
         boolean anyPersonalized = shown.stream().anyMatch(id ->
-            personalizedIds.contains(id)
-                || PreferenceBoost.titleBonus(matches.get(id)) > 0
-                || PreferenceBoost.factor(matches.get(id)) > 1.0);
+            personalizedIds.contains(id) || PreferenceBoost.factor(matches.get(id)) > 1.0);
         Map<UUID, List<String>> matchedSkills = shown.isEmpty()
             ? Map.of()
             : graphRepository.matchedSkills(userId, shown, MAX_MATCHED_SKILLS);
@@ -186,31 +189,23 @@ public class RecommendationService {
             : graphRepository.personalizedRanking(graphName, userId, properties.poolSize());
     }
 
-    /** The title search only adds to the list, so the list does without it when it fails. */
-    private List<UUID> titleJobs(UUID userId) {
+    /** The sources found from what the user looks for only add to the list, so it does without them when they fail. */
+    private BackendContentJobs contentJobs(UUID userId) {
         try {
-            return backendClient.findTitleJobs(
-                new BackendRecommendationContext.TitleJobsRequest(userId, properties.titlePoolSize()));
+            return backendClient.findContentJobs(new BackendContentJobs.Request(userId,
+                Math.min(properties.titlePoolSize(), MAX_CONTENT_JOBS), Math.min(properties.semanticPoolSize(), MAX_CONTENT_JOBS)));
         } catch (FeignException e) {
-            log.warn("Finding jobs by title failed for user {}: {}", userId, e.getMessage());
-            return List.of();
+            log.warn("Finding jobs by title and meaning failed for user {}: {}", userId, e.getMessage());
+            return BackendContentJobs.NONE;
         }
     }
 
-    /**
-     * The ranking scaled to a best score of 1, with the title jobs PageRank did not reach at its end: what
-     * {@link PreferenceBoost#titleBonus} adds then decides how far up they come. Without a ranking their own order is all
-     * there is.
-     */
-    private static List<ScoredJob> withTitleJobs(List<ScoredJob> ranking, List<UUID> titleJobs) {
-        Set<UUID> ranked = ranking.stream().map(ScoredJob::jobId).collect(Collectors.toSet());
-        List<UUID> added = titleJobs.stream().filter(id -> !ranked.contains(id)).distinct().toList();
-        double best = ranking.isEmpty() ? 1.0 : ranking.getFirst().score();
-        List<ScoredJob> scaled = ranking.stream().map(job -> new ScoredJob(job.jobId(), job.score() / best)).toList();
-        Stream<ScoredJob> scored = ranking.isEmpty()
-            ? IntStream.range(0, added.size()).mapToObj(rank -> new ScoredJob(added.get(rank), 1.0 / (rank + 1)))
-            : added.stream().map(id -> new ScoredJob(id, scaled.getLast().score()));
-        return Stream.concat(scaled.stream(), scored).toList();
+    private List<ScoredJob> fuse(List<ScoredJob> graph, BackendContentJobs content) {
+        RecommendationProperties.Fusion fusion = properties.fusion();
+        return RankFusion.fuse(List.of(
+            new Source(graph.stream().map(ScoredJob::jobId).toList(), fusion.graphWeight()),
+            new Source(content.titleJobIds(), fusion.titleWeight()),
+            new Source(content.semanticJobIds(), fusion.semanticWeight())), fusion.k());
     }
 
     /** The best of the newest jobs that are not in the list already, as many as the pool is short of. */
@@ -235,7 +230,7 @@ public class RecommendationService {
 
     private static ScoredJob adjusted(ScoredJob job, Map<UUID, PreferenceMatch> matches) {
         PreferenceMatch match = matches.get(job.jobId());
-        return new ScoredJob(job.jobId(), (job.score() + PreferenceBoost.titleBonus(match)) * PreferenceBoost.factor(match));
+        return new ScoredJob(job.jobId(), job.score() * PreferenceBoost.factor(match));
     }
 
     /**

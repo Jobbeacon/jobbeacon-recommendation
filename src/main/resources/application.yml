@@ -68,6 +68,14 @@ app:
   recommendation:
     pool-size: ${RECOMMENDATION_POOL_SIZE:100}
     title-pool-size: ${RECOMMENDATION_TITLE_POOL_SIZE:50}
+    semantic-pool-size: ${RECOMMENDATION_SEMANTIC_POOL_SIZE:100}
+    # Reciprocal Rank Fusion of the three sources: each adds weight / (k + rank) for a job it ranks. Chosen on half of
+    # the sample CVs (k 10/20/60, weights 1/1/1, 1/1/2, 1/2/2); a small k lets the top of each source count.
+    fusion:
+      k: ${RECOMMENDATION_FUSION_K:10}
+      graph-weight: ${RECOMMENDATION_GRAPH_WEIGHT:1.0}
+      title-weight: ${RECOMMENDATION_TITLE_WEIGHT:2.0}
+      semantic-weight: ${RECOMMENDATION_SEMANTIC_WEIGHT:2.0}
     max-size: 50
     # 0 = always the plain ranking; 1 = picked in proportion to the score; higher = closer to a uniform shuffle.
     sampling-temperature: ${RECOMMENDATION_SAMPLING_TEMPERATURE:0.5}
