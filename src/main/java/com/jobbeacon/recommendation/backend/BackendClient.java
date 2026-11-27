@@ -1,6 +1,7 @@
 package com.jobbeacon.recommendation.backend;
 
 import com.jobbeacon.recommendation.backend.dto.BackendCandidates;
+import com.jobbeacon.recommendation.backend.dto.BackendContentJobs;
 import com.jobbeacon.recommendation.backend.dto.BackendIdPage;
 import com.jobbeacon.recommendation.backend.dto.BackendJob;
 import com.jobbeacon.recommendation.backend.dto.BackendJobSummary;
@@ -38,9 +39,9 @@ public interface BackendClient {
     @PostMapping("/internal/v1/recommendation/context")
     BackendRecommendationContext findRecommendationContext(@RequestBody BackendRecommendationContext.Request request);
 
-    /** Open jobs with a title the user looks for (or, if they stated none, one from their CV), best match first. */
-    @PostMapping("/internal/v1/recommendation/title-jobs")
-    List<UUID> findTitleJobs(@RequestBody BackendRecommendationContext.TitleJobsRequest request);
+    /** Open jobs found from the titles the user looks for and from what their CV is about, each list best first. */
+    @PostMapping("/internal/v1/recommendation/content-jobs")
+    BackendContentJobs findContentJobs(@RequestBody BackendContentJobs.Request request);
 
     /** Job ids in ascending order, starting after {@code after}; for the backfill. */
     @GetMapping("/internal/v1/graph/job-ids")

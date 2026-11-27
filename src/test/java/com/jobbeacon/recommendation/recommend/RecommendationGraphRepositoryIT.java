@@ -69,7 +69,7 @@ class RecommendationGraphRepositoryIT {
     GraphProperties graphProperties = new GraphProperties("neo4j", 100, 10, Duration.ofDays(180), true);
     projection = new GraphProjectionService(driver, graphProperties);
     repository = new RecommendationGraphRepository(driver, graphProperties,
-        new RecommendationProperties(100, 50, 50, 0.5, Duration.ofMinutes(15), Duration.ofMinutes(5),
+        new RecommendationProperties(100, 50, 100, new RecommendationProperties.Fusion(60, 1, 1, 1), 50, 0.5, Duration.ofMinutes(15), Duration.ofMinutes(5),
             Duration.ofDays(14), 20, 0.85));
   }
 

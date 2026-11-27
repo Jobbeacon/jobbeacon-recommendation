@@ -7,9 +7,11 @@ import java.time.Duration;
 /**
  * Tuning for {@code GET /api/v1/me/recommended-jobs}.
  *
- * @param poolSize            how many jobs a user's list is drawn from: the best Personalized PageRank results,
- *                            topped up with the newest jobs when there are fewer
- * @param titlePoolSize       how many jobs found by title (see {@code BackendClient#findTitleJobs}) join that pool
+ * @param poolSize            how many jobs a user's list is drawn from, and how many Personalized PageRank results
+ *                            join it; the newest jobs top it up when the sources found fewer
+ * @param titlePoolSize       how many jobs found by title words join it (see {@code BackendClient#findContentJobs})
+ * @param semanticPoolSize    how many jobs closest in meaning to the user's CV join it
+ * @param fusion              how the three sources are fused (see {@code RankFusion})
  * @param maxSize             most jobs a request may ask for
  * @param samplingTemperature how much each reload reshuffles the pool. A job's chance of being picked next grows
  *                            with {@code score ^ (1 / temperature)}: near 0 always gives the plain ranking, 1 picks in
@@ -27,6 +29,8 @@ import java.time.Duration;
 public record RecommendationProperties(
         int poolSize,
         int titlePoolSize,
+        int semanticPoolSize,
+        Fusion fusion,
         int maxSize,
         double samplingTemperature,
         Duration cacheTtl,
@@ -35,4 +39,13 @@ public record RecommendationProperties(
         int maxIterations,
         double dampingFactor
 ) {
+
+    /**
+     * @param k              how little rank differences within a source count (60 is the usual value; 10 did better here)
+     * @param graphWeight    of the Personalized PageRank ranking
+     * @param titleWeight    of the jobs found by title words
+     * @param semanticWeight of the jobs closest in meaning; 0 leaves a source out
+     */
+    public record Fusion(double k, double graphWeight, double titleWeight, double semanticWeight) {
+    }
 }

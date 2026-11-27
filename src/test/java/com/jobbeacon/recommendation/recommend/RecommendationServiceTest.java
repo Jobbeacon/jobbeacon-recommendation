@@ -14,9 +14,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.jobbeacon.recommendation.backend.BackendClient;
+import com.jobbeacon.recommendation.backend.dto.BackendContentJobs;
 import com.jobbeacon.recommendation.backend.dto.BackendJobSummary;
 import com.jobbeacon.recommendation.backend.dto.BackendRecommendationContext;
-import com.jobbeacon.recommendation.backend.dto.BackendRecommendationContext.CvTitle;
 import com.jobbeacon.recommendation.backend.dto.BackendRecommendationContext.PreferenceMatch;
 import com.jobbeacon.recommendation.backend.dto.IdsRequest;
 import com.jobbeacon.recommendation.config.RecommendationProperties;
@@ -44,6 +44,7 @@ class RecommendationServiceTest {
   private static final UUID USER = UUID.randomUUID();
   private static final int POOL = 10;
   private static final int TITLE_POOL = 5;
+  private static final int SEMANTIC_POOL = 7;
 
   private final RecommendationGraphRepository graphRepository = mock(RecommendationGraphRepository.class);
   private final GraphProjectionService projectionService = mock(GraphProjectionService.class);
@@ -56,6 +57,7 @@ class RecommendationServiceTest {
     when(projectionService.activeGraphName()).thenReturn(Optional.of("graph-1"));
     when(graphRepository.newestJobs(anyInt())).thenReturn(List.of());
     givenContext(List.of());
+    givenContentJobs(List.of(), List.of());
     // The backend knows every job and answers in reverse order, to check that the response keeps the list's order.
     when(backendClient.findJobSummaries(any())).thenAnswer(call -> {
       List<BackendJobSummary> cards = new ArrayList<>(((IdsRequest) call.getArgument(0)).ids().stream()
@@ -112,8 +114,8 @@ class RecommendationServiceTest {
         new ScoredJob(UUID.randomUUID(), 0.5), new ScoredJob(UUID.randomUUID(), 0.4), new ScoredJob(UUID.randomUUID(), 0.3));
     givenRanking(ranked);
     givenContext(List.of(),
-        new PreferenceMatch(ranked.get(0).jobId(), null, false, null, null, null, null),
-        new PreferenceMatch(ranked.get(2).jobId(), true, true, true, null, null, null));
+        new PreferenceMatch(ranked.get(0).jobId(), false, null, null, null),
+        new PreferenceMatch(ranked.get(2).jobId(), true, true, null, null));
 
     assertThat(ids(service(0).recommend(USER, 10)))
         .containsExactly(ranked.get(2).jobId(), ranked.get(1).jobId(), ranked.get(0).jobId());
@@ -126,24 +128,24 @@ class RecommendationServiceTest {
     when(graphRepository.newestJobs(anyInt())).thenReturn(newest);
     assertThat(service.recommend(USER, 10).personalized()).isFalse();
 
-    givenContext(List.of(), new PreferenceMatch(newest.get(2), true, true, true, true, null, null));
+    givenContext(List.of(),
+        new PreferenceMatch(newest.get(0), false, null, null, null),
+        new PreferenceMatch(newest.get(2), true, true, true, null));
 
     RecommendedJobsResponse response = service(0).recommend(USER, 10);
     assertThat(response.personalized()).isTrue();
-    assertThat(ids(response).get(0)).isEqualTo(newest.get(2));
+    assertThat(ids(response)).containsExactly(newest.get(2), newest.get(1), newest.get(0));
   }
 
   @Test
-  void aCvTitleLiftsAJobLessThanADesiredTitle() {
-    List<ScoredJob> ranked = IntStream.range(0, 4).mapToObj(i -> new ScoredJob(UUID.randomUUID(), 1.0)).toList();
+  void aJobSeveralSourcesRankComesFirst() {
+    List<ScoredJob> ranked = jobs(3);
+    UUID onlyByMeaning = UUID.randomUUID();
     givenRanking(ranked);
-    givenContext(List.of(),
-        new PreferenceMatch(ranked.get(1).jobId(), null, null, null, null, CvTitle.PAST, null),
-        new PreferenceMatch(ranked.get(2).jobId(), null, null, null, null, CvTitle.CURRENT, null),
-        new PreferenceMatch(ranked.get(3).jobId(), true, null, null, null, null, null));
+    givenContentJobs(List.of(ranked.get(2).jobId()), List.of(ranked.get(2).jobId(), onlyByMeaning));
 
     assertThat(ids(service(0).recommend(USER, 10))).containsExactly(
-        ranked.get(3).jobId(), ranked.get(2).jobId(), ranked.get(1).jobId(), ranked.get(0).jobId());
+        ranked.get(2).jobId(), ranked.get(0).jobId(), ranked.get(1).jobId(), onlyByMeaning);
   }
 
   @Test
@@ -151,35 +153,31 @@ class RecommendationServiceTest {
     List<ScoredJob> ranked = IntStream.range(0, 4).mapToObj(i -> new ScoredJob(UUID.randomUUID(), 1.0 - i / 100.0)).toList();
     givenRanking(ranked);
     givenContext(List.of(),
-        new PreferenceMatch(ranked.get(0).jobId(), null, null, null, null, null, 37),
-        new PreferenceMatch(ranked.get(1).jobId(), null, null, null, null, null, 36),
-        new PreferenceMatch(ranked.get(2).jobId(), null, null, null, null, null, 12),
-        new PreferenceMatch(ranked.get(3).jobId(), null, null, null, null, null, 0));
+        new PreferenceMatch(ranked.get(0).jobId(), null, null, null, 37),
+        new PreferenceMatch(ranked.get(1).jobId(), null, null, null, 36),
+        new PreferenceMatch(ranked.get(2).jobId(), null, null, null, 12),
+        new PreferenceMatch(ranked.get(3).jobId(), null, null, null, 0));
 
     assertThat(ids(service(0).recommend(USER, 10))).containsExactly(
         ranked.get(2).jobId(), ranked.get(3).jobId(), ranked.get(1).jobId(), ranked.get(0).jobId());
   }
 
   @Test
-  void titleJobsTheGraphDoesNotReachComeUpWhereverTheScoresAre() {
-    // Real PageRank scores are small and fall off steeply.
-    List<ScoredJob> ranked = List.of(new ScoredJob(UUID.randomUUID(), 0.02), new ScoredJob(UUID.randomUUID(), 0.008),
-        new ScoredJob(UUID.randomUUID(), 0.0001));
-    UUID added = UUID.randomUUID();
+  void jobsTheGraphDoesNotReachComeUpWhenTheOtherSourcesAgree() {
+    List<ScoredJob> ranked = jobs(3);
+    UUID found = UUID.randomUUID();
     givenRanking(ranked);
-    givenTitleJobs(ranked.get(2).jobId(), added);
-    givenContext(List.of(), new PreferenceMatch(added, true, null, null, null, null, null));
+    givenContentJobs(List.of(found), List.of(found));
 
-    assertThat(ids(service(0).recommend(USER, 10))).containsExactly(
-        ranked.get(0).jobId(), added, ranked.get(1).jobId(), ranked.get(2).jobId());
+    assertThat(ids(service(0).recommend(USER, 10)).get(0)).isEqualTo(found);
   }
 
   @Test
-  void titleJobsPersonalizeTheListOfAUserTheGraphDoesNotKnow() {
+  void contentJobsPersonalizeTheListOfAUserTheGraphDoesNotKnow() {
     List<UUID> titleJobs = ids(jobs(2));
     UUID newest = UUID.randomUUID();
     givenRanking(List.of());
-    givenTitleJobs(titleJobs.toArray(UUID[]::new));
+    givenContentJobs(titleJobs, List.of());
     when(graphRepository.newestJobs(anyInt())).thenReturn(List.of(newest));
 
     RecommendedJobsResponse response = service(0).recommend(USER, 10);
@@ -189,20 +187,20 @@ class RecommendationServiceTest {
   }
 
   @Test
-  void savedTitleJobsAreHiddenToo() {
+  void savedContentJobsAreHiddenToo() {
     UUID saved = UUID.randomUUID();
     givenRanking(List.of());
-    givenTitleJobs(saved);
+    givenContentJobs(List.of(saved), List.of(saved));
     givenContext(List.of(saved));
 
     assertThat(ids(service.recommend(USER, 10))).isEmpty();
   }
 
   @Test
-  void failingTitleSearchOnlyCostsTheTitleJobs() {
+  void failingContentSearchOnlyCostsTheContentJobs() {
     List<ScoredJob> ranked = jobs(2);
     givenRanking(ranked);
-    when(backendClient.findTitleJobs(any())).thenThrow(mock(FeignException.class));
+    when(backendClient.findContentJobs(any())).thenThrow(mock(FeignException.class));
 
     assertThat(ids(service.recommend(USER, 10))).containsExactlyInAnyOrderElementsOf(ids(ranked));
   }
@@ -362,7 +360,8 @@ class RecommendationServiceTest {
 
   private RecommendationService service(double temperature) {
     return new RecommendationService(graphRepository, projectionService, interactionRepository, backendClient,
-        new RecommendationProperties(POOL, TITLE_POOL, 50, temperature, Duration.ofMinutes(15), Duration.ofMinutes(5),
+        new RecommendationProperties(POOL, TITLE_POOL, SEMANTIC_POOL, new RecommendationProperties.Fusion(60, 1, 1, 1),
+            50, temperature, Duration.ofMinutes(15), Duration.ofMinutes(5),
             Duration.ofDays(14), 20, 0.85));
   }
 
@@ -370,9 +369,9 @@ class RecommendationServiceTest {
     when(graphRepository.personalizedRanking("graph-1", USER, POOL)).thenReturn(ranked);
   }
 
-  private void givenTitleJobs(UUID... jobIds) {
-    when(backendClient.findTitleJobs(new BackendRecommendationContext.TitleJobsRequest(USER, TITLE_POOL)))
-        .thenReturn(Arrays.asList(jobIds));
+  private void givenContentJobs(List<UUID> byTitle, List<UUID> byMeaning) {
+    when(backendClient.findContentJobs(new BackendContentJobs.Request(USER, TITLE_POOL, SEMANTIC_POOL)))
+        .thenReturn(new BackendContentJobs(byTitle, byMeaning));
   }
 
   private void givenContext(List<UUID> saved, PreferenceMatch... matches) {
